@@ -1,0 +1,237 @@
+{
+  "name": "env-follow",
+  "displayName": "Env Follow · Python 环境",
+  "description": "You write code. Your environment follows. Python + uv 依赖环境可视化。",
+  "version": "0.3.0",
+  "publisher": "env-follow-local",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/afterrain2006/env-follow.git" },
+  "homepage": "https://github.com/afterrain2006/env-follow#readme",
+  "bugs": { "url": "https://github.com/afterrain2006/env-follow/issues" },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "python",
+    "uv",
+    "dependencies",
+    "environment"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/*.py",
+    "workspaceContains:pyproject.toml",
+    "onLanguage:python"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "读取环境和调用 uv 需要可信工作区。"
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "envFollow",
+          "title": "Env Follow",
+          "icon": "media/environment.svg"
+        }
+      ]
+    },
+    "views": {
+      "envFollow": [
+        {
+          "type": "webview",
+          "id": "envFollow.overview",
+          "name": "Python 项目环境"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "envFollow.open",
+        "title": "Env Follow: 打开环境面板"
+      },
+      {
+        "command": "envFollow.refresh",
+        "title": "Env Follow: 重新扫描",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "envFollow.createEnvironment",
+        "title": "Env Follow: 创建项目环境"
+      },
+      {
+        "command": "envFollow.sync",
+        "title": "Env Follow: 同步项目环境"
+      },
+      {
+        "command": "envFollow.addMissing",
+        "title": "Env Follow: 添加已识别的缺失依赖"
+      },
+      {
+        "command": "envFollow.selectProject",
+        "title": "Env Follow: 选择项目"
+      },
+      {
+        "command": "envFollow.useInterpreter",
+        "title": "Env Follow: 使用项目 Python"
+      },
+      {
+        "command": "envFollow.runFile",
+        "title": "Env Follow: 使用项目环境运行当前文件",
+        "icon": "$(play)"
+      },
+      {
+        "command": "envFollow.selectGroups",
+        "title": "Env Follow: 选择依赖组"
+      },
+      {
+        "command": "envFollow.importRequirements",
+        "title": "Env Follow: 预览导入 requirements.txt"
+      },
+      {
+        "command": "envFollow.repair",
+        "title": "Env Follow: 预览按锁文件修复"
+      },
+      {
+        "command": "envFollow.showTree",
+        "title": "Env Follow: 查看环境依赖树"
+      },
+      {
+        "command": "envFollow.checkHealth",
+        "title": "Env Follow: 检查环境健康"
+      },
+      {
+        "command": "envFollow.checkUpdates",
+        "title": "Env Follow: 检查依赖更新"
+      },
+      {
+        "command": "envFollow.upgradePackage",
+        "title": "Env Follow: 预览升级项目依赖"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "envFollow.refresh",
+          "when": "view == envFollow.overview",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "envFollow.runFile",
+          "when": "resourceLangId == python",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Env Follow",
+      "properties": {
+        "envFollow.uvPath": {
+          "type": "string",
+          "scope": "resource",
+          "default": "uv",
+          "description": "uv 可执行文件名或绝对路径；不接受命令参数。",
+          "restricted": true
+        },
+        "envFollow.pythonPath": {
+          "type": "string",
+          "scope": "resource",
+          "default": "",
+          "description": "用于 AST/TOML 分析的 Python 3.11+；留空自动检测。",
+          "restricted": true
+        },
+        "envFollow.scanDelay": {
+          "type": "number",
+          "scope": "resource",
+          "default": 700,
+          "minimum": 200,
+          "maximum": 5000,
+          "description": "文件保存后扫描的防抖间隔（毫秒）。"
+        },
+        "envFollow.maxFiles": {
+          "type": "number",
+          "scope": "resource",
+          "default": 4000,
+          "minimum": 10,
+          "maximum": 20000,
+          "description": "单项目扫描文件上限。超过上限会明确提示结果不完整。"
+        },
+        "envFollow.excludeDirectories": {
+          "type": "array",
+          "scope": "resource",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "额外排除的目录名，例如 vendor。"
+        },
+        "envFollow.importMappings": {
+          "type": "object",
+          "scope": "resource",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "用户确认的 import → PyPI 包名映射，例如 {\"my_import\":\"my-package\"}。仅接受普通包名。"
+        },
+        "envFollow.activeExtras": {
+          "type": "array",
+          "scope": "resource",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "本项目启用的可选依赖组"
+        },
+        "envFollow.activeGroups": {
+          "type": "array",
+          "scope": "resource",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "除 uv 默认组外额外启用的开发依赖组"
+        },
+        "envFollow.excludeDev": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "同步时排除默认 dev 开发组"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "watch": "node scripts/build.mjs --watch",
+    "test": "npm run build && node --test tests/*.test.cjs && python -I -m unittest discover -s tests -p test_*.py -v",
+    "test:integration": "npm run build && node --test tests/integration.cjs",
+    "test:integration:v02": "npm run build && node --test tests/v02.integration.cjs",
+    "package": "npm run check && npm run build && vsce package --allow-missing-repository -o env-follow-0.3.0.vsix",
+    "vscode:prepublish": "npm run build",
+    "scan": "node dist/cli.js",
+    "test:integration:v03": "npm run build && node --test tests/v03.integration.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "~1.96.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}

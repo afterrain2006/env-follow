@@ -1,0 +1,84 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const { ProjectService, run, projectRunSpec, compareInterpreter, classifyError } = require('../dist/core.js');
+const parent = path.join(__dirname, '..', '.test-work');
+const helperPath = path.join(__dirname, '..', 'python', 'inspect_project.py');
+
+async function fixture(prefix) {
+  await fs.mkdir(parent, { recursive: true });
+  const root = await fs.mkdtemp(path.join(parent, prefix));
+  const options = { root, helperPath, log: text => process.stderr.write(text) };
+  return { root, options, service: new ProjectService(options) };
+}
+test('v0.2 requirements preview is read-only, resolves transitives, applies reviewed versions and runs src layout', { timeout: 240000 }, async () => {
+  const { root, service } = await fixture('v02-import-');
+  const requirements = 'requests>=2.32,<3\n';
+  await fs.writeFile(path.join(root, 'requirements.txt'), requirements);
+  const plan = await service.preview([], 'requirements');
+  assert.equal(await fs.stat(path.join(root, 'pyproject.toml')).catch(() => null), null);
+  assert.equal(await fs.stat(path.join(root, 'uv.lock')).catch(() => null), null);
+  assert.equal(await fs.stat(path.join(root, '.venv')).catch(() => null), null);
+  assert.ok(plan.changes.some(row => row.name === 'requests'));
+  assert.ok(plan.changes.some(row => row.name === 'urllib3'));
+  assert.ok(plan.items.find(row => row.name === 'urllib3').direct === false);
+  assert.ok(plan.items.some(row => row.directWheelBytes > 0));
+  await service.applyPreview(plan);
+  let state = await service.scan();
+  for (const item of plan.changes.filter(row => row.to)) assert.ok(state.inspection.installed.some(row => row.name === item.name && row.version === item.to));
+  assert.equal(await fs.readFile(path.join(root, 'requirements.txt'), 'utf8'), requirements);
+  // Unrelated packages survive repair, and any external install expires an older plan.
+  const stale = await service.preview([], 'sync');
+  await run('uv', ['pip', 'install', '--python', state.environment.python.path, '--no-build', 'colorama'], { cwd: root, timeout: 120000 });
+  await assert.rejects(service.applyPreview(stale), /预览已过期/);
+  const repair = await service.preview([], 'repair');
+  await service.applyPreview(repair);
+  state = await service.scan();
+  assert.ok(state.inspection.installed.some(row => row.name === 'colorama'));
+  await run('uv', ['pip', 'install', '--python', state.environment.python.path, '--no-deps', '--no-build', 'requests==2.32.3'], { cwd: root, timeout: 120000 });
+  const replace = await service.preview([], 'repair');
+  assert.ok(replace.changes.some(row => row.name === 'requests' && row.action === 'replace' && row.from === '2.32.3'));
+  await service.applyPreview(replace);
+  state = await service.scan();
+  await fs.mkdir(path.join(root, 'src', 'local_app'), { recursive: true });
+  await fs.writeFile(path.join(root, 'src', 'local_app', '__init__.py'), 'MESSAGE = "src layout works"\n');
+  const file = path.join(root, 'hello & unicode 测试.py');
+  await fs.writeFile(file, 'import sys, requests\nfrom local_app import MESSAGE\nprint(sys.executable)\nprint(MESSAGE)\n');
+  const spec = await projectRunSpec(root, file, state.environment.python, state.environment.venvExists);
+  const result = await run(spec.executable, spec.args, { cwd: spec.cwd, env: spec.env });
+  assert.match(result.stdout, /src layout works/);
+  assert.ok(result.stdout.toLowerCase().includes('.venv'));
+  assert.equal((await compareInterpreter(state.environment.python.path, state.environment.python, true)).status, 'aligned');
+  assert.equal((await compareInterpreter(state.environment.analysisPython.path, state.environment.python, true)).status, 'mismatch');
+  await assert.rejects(projectRunSpec(root, helperPath, state.environment.python, true), /所选项目/);
+  console.log('v0.2 fixture:', root);
+});
+test('v0.2 edited project invalidates plan, selected groups match install and conflict preview leaves files unchanged', { timeout: 240000 }, async () => {
+  const { root, options } = await fixture('v02-groups-');
+  const manifest = '[project]\nname = "group-demo"\nversion = "0.1.0"\nrequires-python = ">=3.12"\ndependencies = ["requests<3"]\n[project.optional-dependencies]\npretty = ["colorama"]\n[dependency-groups]\nqa = ["pytest"]\n';
+  await fs.writeFile(path.join(root, 'pyproject.toml'), manifest);
+  const service = new ProjectService({ ...options, selection: { extras: ['pretty'], groups: ['qa'], noDev: true } });
+  const plan = await service.preview([], 'sync');
+  assert.ok(plan.changes.some(row => row.name === 'colorama'));
+  assert.ok(plan.changes.some(row => row.name === 'pytest'));
+  await fs.appendFile(path.join(root, 'pyproject.toml'), '\n# concurrent edit\n');
+  await assert.rejects(service.applyPreview(plan), /预览已过期/);
+  const edited = await fs.readFile(path.join(root, 'pyproject.toml'), 'utf8');
+  const fresh = await service.preview([], 'sync');
+  await service.applyPreview(fresh);
+  const state = await service.scan();
+  assert.ok(state.inspection.installed.some(row => row.name === 'pytest'));
+  assert.ok(state.inspection.installed.some(row => row.name === 'colorama'));
+  assert.ok((await fs.readFile(path.join(root, 'pyproject.toml'), 'utf8')).includes('# concurrent edit'));
+  const declaredBefore = await fs.readFile(path.join(root, 'pyproject.toml'));
+  const lockBefore = await fs.readFile(path.join(root, 'uv.lock'));
+  await assert.rejects(service.preview(['env-follow-nonexistent-934aa91']), error => classifyError(error).category === 'conflict');
+  assert.ok((await fs.readFile(path.join(root, 'pyproject.toml'))).equals(declaredBefore));
+  assert.ok((await fs.readFile(path.join(root, 'uv.lock'))).equals(lockBefore));
+  // Requirements containing unsupported directives must never partially import.
+  await fs.writeFile(path.join(root, 'requirements.txt'), 'requests\n-r private.txt\n');
+  await assert.rejects(service.preview([], 'requirements'), /没有导入任何依赖/);
+  assert.ok((await fs.readFile(path.join(root, 'pyproject.toml'))).equals(declaredBefore));
+  console.log('group fixture:', root);
+});

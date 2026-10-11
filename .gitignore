@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.vsix
+.venv/
+__pycache__/
+*.pyc
+.test-work/
+.DS_Store
+.npm-cache/
+.env
+.env.*
+!.env.example

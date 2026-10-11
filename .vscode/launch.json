@@ -1,0 +1,10 @@
+{
+  "version": "0.2.0",
+  "configurations": [{
+    "name": "运行 Env Follow 扩展",
+    "type": "extensionHost", "request": "launch",
+    "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${workspaceFolder}/examples/demo"],
+    "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+    "preLaunchTask": "npm: build"
+  }]
+}

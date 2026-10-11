@@ -1,0 +1,16 @@
+node_modules/**
+src/**
+tests/**
+scripts/**
+examples/**
+.vscode/**
+.test-work/**
+**/__pycache__/**
+**/*.pyc
+**/*.map
+*.vsix
+tsconfig.json
+package-lock.json
+.gitignore
+TESTING.md
+.npm-cache/**
